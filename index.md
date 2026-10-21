@@ -9,6 +9,9 @@ nav_order: 1
 What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and which of those signals a detection pipeline actually receives.
 {: .fs-6 .fw-300 }
 
+{: .warning }
+**Initial research.** Done within about two hours of the advisories being published, on one lab VM. The log results are measured. Statements about EDR behaviour are expectations: Sysmon stood in for the sensor, and without real EDR sensors we cannot confirm them.
+
 <details open markdown="block">
 <summary>Contents</summary>
 {: .text-delta }
@@ -26,7 +29,7 @@ For every signal it answers three questions:
 2. Is that source on by default?
 3. Does it reach the SIEM, and what KQL finds it?
 
-EDR records what processes do: process trees, file writes, network connections. It does not read PHP error logs. A PHP error reaches a SIEM only if a log shipper collects the file, or if PHP is told to write to the operating system's own log. That gap is what this project measures.
+EDR records what processes do: process trees, file writes, network connections. It does not typically read PHP error logs. A PHP error reaches a SIEM only if a log shipper collects the file, or if PHP is told to write to the operating system's own log. That gap is what this project measures.
 
 Windows is done first. Linux and macOS follow the same method.
 
@@ -51,7 +54,7 @@ Each PHP CVE gets its own page: the observable precondition, generated benignly 
 
 A recurring theme across both: whether a fatal **restarts** the FastCGI worker (state cleared, loud crash) or the worker is **reused** (state persists, quiet) decides both the risk and which signal fires.
 
-For what it takes to actually detect these — and why a stock EDR catches the exploitation but not the precondition — see **[Detection coverage](detection-coverage.html)**.
+For what it takes to actually detect these — and why we expect a stock EDR to catch the exploitation but not the precondition — see **[Detection coverage](detection-coverage.html)**.
 
 To check these findings yourself, the lab architecture and full rebuild steps are in [Build steps](build/).
 

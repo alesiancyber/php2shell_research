@@ -2,6 +2,8 @@
 
 What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and which of those signals a detection pipeline actually receives. Logging and detection research only: tests use harmless requests that reach the same code path, never a working exploit.
 
+> **Initial research.** Done within about two hours of the advisories being published, on one lab VM. The log results are measured. Statements about EDR behaviour are expectations: Sysmon stood in for the sensor, and without real EDR sensors we cannot confirm them.
+
 **Full write-up:** https://alesiancyber.github.io/php2shell_research/
 
 ## What this is and what it is not
@@ -21,7 +23,7 @@ What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and whi
 | [CVE-2026-109618](case-studies/cve-2026-109618.md) | Use-after-free via OOM handling | An OOM during multipart parsing logs `in Unknown on line 0` and crashes the FastCGI worker; a script OOM does not | [`detections-109618.kql`](kql/detections-109618.kql) |
 | [CVE-2026-109619](case-studies/cve-2026-109619.md) | Use-after-free via dangling request state | A timeout or script OOM fatal leaves the worker running, so the next request reuses it | [`detections-109619.kql`](kql/detections-109619.kql) |
 
-- **A stock EDR does not catch either precondition.** An OOM, a timeout, or a worker that dies or gets reused looks like normal web-server behaviour. The EDR's job is the exploitation outcome (`php-cgi.exe` spawning a shell, outbound C2). See [Detection coverage](detection-coverage.md).
+- **We do not expect a stock EDR to catch either precondition** (untested against a commercial EDR). An OOM, a timeout, or a worker that dies or gets reused looks like normal web-server behaviour. An EDR's more likely role is the exploitation outcome (`php-cgi.exe` spawning a shell, outbound C2). See [Detection coverage](detection-coverage.md).
 - **The useful signals are SIEM detections over app logs:** the IIS log and the PHP error log, sometimes correlated with process telemetry.
 - **Shipping the IIS log alone covers a lot.** Its default fields separate the cases: a 500 with a non-zero `win32status` (aborted worker), a 413 (oversized body), and a 500 whose `time-taken` ≈ `max_execution_time` (timeout).
 - **PHP error logging is off by default.** With `error_log` unset, the fatal text is lost and a script OOM leaves only a bare IIS 500.
@@ -36,7 +38,7 @@ Linux and macOS are next, using the same method.
 | --- | --- |
 | `index.md` | Overview, scope, and the Windows log source matrix |
 | `case-studies/` | One page per CVE: findings and detections |
-| `detection-coverage.md` | Which monitoring tier sees each signal, and what a stock EDR catches |
+| `detection-coverage.md` | Which monitoring tier sees each signal, and what we expect a stock EDR to catch |
 | `kql/detections-*.kql` | Detection queries per CVE |
 | `triggers/` | Benign request generators for each precondition |
 | `build/` | Steps to rebuild the lab and check the findings |
