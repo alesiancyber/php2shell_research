@@ -22,4 +22,4 @@ curl -A "LAB-RUN-<id>" -X POST --data-binary @body.bin \
   -H "Content-Type: multipart/form-data; boundary=----labboundary" "http://<vm-ip>/oom-multipart.php"
 ```
 
-Detections that fire on these: [`kql/detections.kql`](../kql/detections.kql).
+Detections that fire on these: [`kql/detections-109618.kql`](../kql/detections-109618.kql).

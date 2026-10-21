@@ -30,36 +30,16 @@ EDR records what processes do: process trees, file writes, network connections. 
 
 Windows is done first. Linux and macOS follow the same method.
 
-## Highlights
+## Case studies
 
-First case: **CVE-2026-109618** — a memory-safety flaw in PHP's out-of-memory (OOM) handling, reachable through multipart request parsing (fixed in PHP 8.2.35 / 8.3.36 / 8.4.27 / 8.5.12). We do not touch the bug. We generate its **observable precondition** — a request that drives PHP to its memory limit — the ordinary way, and read the logs. The signal looks the same whether or not PHP is patched, so these detections work as a tripwire for the precondition regardless of version.
+Each PHP CVE gets its own page: the observable precondition, generated benignly (no exploit), what it leaves in the Windows/IIS logs, and ready-to-run detections. See **[Case studies](case-studies/)**.
 
-A request can drive PHP to OOM in two very different places, and they leave different traces:
-
-| Finding | Where it shows up | On by default | Detection angle |
+| CVE | Class | What we generate | Headline signal |
 | --- | --- | --- | --- |
-| OOM **during multipart parsing** logs `Allowed memory size ... exhausted ... in Unknown on line 0` — no script name or line, because it happens before any script runs | `PhpErrorLog_CL` (PHP error log) | PHP error logging off | Alert on a PHP fatal whose location is `Unknown on line 0`: that is a SAPI/parse-path OOM, not ordinary script code |
-| The parse-path OOM **kills the FastCGI worker** (`php-cgi.exe` starts and dies within ~130 ms); a script OOM does not | `Event` (Sysmon 5 / 1), Security 4689 | Sysmon not installed; 4689 off | `php-cgi.exe` termination correlated with a POST that returns 500 |
-| IIS records the parse-path OOM as **500 with a non-zero `win32status`** (observed 233 "pipe not connected" and 995 "operation aborted" — the worker's FastCGI pipe lost its process); a clean script OOM is 500 with `win32status` 0 | `W3CIISLog` | IIS log on (the `Win32Status` field is a default field) | `sc-win32-status != 0` on a 500 POST marks an aborted worker, distinct from an ordinary PHP 500 |
-| An **oversized** multipart body is blocked by IIS request filtering (**413**, substatus 1) before PHP runs at all | `W3CIISLog` | On (≈30 MB `maxAllowedContentLength`) | A run of 413s on a POST endpoint = oversized-body probing, upstream of PHP |
-| A plain **script-level** `memory_limit` OOM leaves **no process or EDR trace** — only the PHP log line and an IIS 500 | `PhpErrorLog_CL` + `W3CIISLog` | PHP log off | If PHP logging is off, the only signal is a bare IIS 500; the error is otherwise invisible |
+| [CVE-2026-109618](case-studies/cve-2026-109618.html) | UAF via OOM handling | A request driving PHP to its memory limit | Parse-path OOM (`Unknown on line 0`) crashes the FastCGI worker; a script OOM does not |
+| [CVE-2026-109619](case-studies/cve-2026-109619.html) | UAF via dangling request state | A fatal (timeout or OOM) leaving a worker reusable | A fatal with **no** worker restart = state carried into the next request |
 
-{: .note }
-Generated benignly: a deliberately low `memory_limit` plus either an in-script allocation or a large (but normal) multipart POST. No exploit, no payload — just PHP reaching its memory ceiling.
-
-### Where the OOM error goes, by PHP logging mode
-
-The same OOM, run under each `error_log` setting, lands in very different places:
-
-| `error_log` (php.ini) | Case A — script OOM | Case B2 — parse-path OOM |
-| --- | --- | --- |
-| file (e.g. `php_errors.log`) | `PhpErrorLog_CL` | `PhpErrorLog_CL` |
-| `syslog` | `Event` (Application) — real text in `EventData`, **not** the rendered description | `Event` — same |
-| **unset (default)** | **lost** — no PHP error anywhere; only a bare IIS 500 remains | PHP text **lost**, but the worker death still shows: IIS non-zero `win32status`, Security 4689, Sysmon 5 |
-
-**The key conclusion:** on a default PHP install the benign script-level OOM is almost invisible (a lone IIS 500), but the parse-path OOM — the one CVE-2026-109618 is about — stays detectable even with PHP error logging off, because it crashes the FastCGI worker. The dangerous case is the louder one.
-
-Ready-to-run detections for these: [`kql/detections.kql`]({{ site.github.repository_url }}/blob/main/kql/detections.kql).
+A recurring theme across both: whether a fatal **restarts** the FastCGI worker (state cleared, loud crash) or the worker is **reused** (state persists, quiet) decides both the risk and which signal fires.
 
 ## Architecture and design choices
 
@@ -105,7 +85,7 @@ Most of the useful sources are off on a default Windows and IIS server, so a det
 Items marked **\*** affect what a detection can see. The rest are lab notes.
 
 - **\*** A request that makes PHP log a warning still returns **HTTP 200**. The IIS log shows nothing unusual; the error exists only in the PHP log.
-- **\*** With `error_log` unset (PHP's default), errors under IIS FastCGI may not be logged anywhere. Run C will confirm.
+- **\*** With `error_log` unset (PHP's default), the PHP error is lost entirely — confirmed: no OOM/timeout text in any table, only a bare IIS 500 remains (see the case studies).
 - **\*** `php-cgi.exe` stays running between requests under FastCGI. Process creation for it appears when the app pool starts, not per request, and any child process shows `php-cgi.exe` as its parent.
 - **\*** IIS writes its log lazily: in testing, a line landed about 24 seconds after a flush request. Near-real-time detections on `W3CIISLog` see that delay.
 - **\*** Most of the useful sources are off by default; see the matrix above.

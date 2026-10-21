@@ -1,0 +1,41 @@
+// Detections for the precondition of CVE-2026-109619 (use-after-free via dangling request state on a
+// reused PHP worker). The CVE needs a fatal error (timeout or OOM) to leave a worker reusable, then a
+// later request on the same worker to read the stale state. These fire on that precondition and do not
+// depend on PHP being unpatched. Tables match Microsoft Sentinel (SecurityEvent, Event, W3CIISLog) plus
+// this lab's PhpErrorLog_CL. The OOM interrupting-fatal is covered in detections-109618.kql.
+
+// A. Timeout fatal: PHP interrupts a request that ran past max_execution_time.
+PhpErrorLog_CL
+| where TimeGenerated > ago(1h)
+| where Message has "Maximum execution time" and Message has "exceeded"
+| project TimeGenerated, Computer, Message, SourceFile
+
+// ---
+
+// A2. Timeout from the IIS log alone: a 500 whose time-taken is about the max_execution_time, with no
+//     PHP log needed. Set the threshold to your deployment's max_execution_time in ms (production
+//     default is 30 s = 30000). This lab used a 2 s limit, so >= 1900.
+W3CIISLog
+| where TimeGenerated > ago(1h)
+| where scStatus == "500" and TimeTaken >= 1900
+| project TimeGenerated, Computer, csUriStem, cIP, TimeTaken, csUserAgent
+
+// ---
+
+// B. Reused worker after a fatal (the cross-request condition the UAF needs): a PHP fatal with NO
+//    php-cgi.exe restart within a short window of it on the same host. These are the fatals that leave a
+//    live worker holding freed state (timeout, script-level OOM). The parse-path OOM instead restarts the
+//    worker, which clears the state, so it is excluded here (detect that one in detections-109618.kql).
+let fatals =
+    PhpErrorLog_CL
+    | where TimeGenerated > ago(1h) and Level == "Fatal error"
+    | project FatalTime = TimeGenerated, Computer, Fatal = Message;
+let exits =
+    SecurityEvent
+    | where TimeGenerated > ago(1h) and EventID == 4689 and ProcessName has "php-cgi"
+    | project ExitTime = TimeGenerated, Computer;
+fatals
+| join kind=leftouter exits on Computer
+| summarize MinGap = min(abs(datetime_diff('second', FatalTime, ExitTime))) by FatalTime, Computer, Fatal
+| where isnull(MinGap) or MinGap > 5          // no worker restart near the fatal => worker reused
+| project FatalTime, Computer, Fatal
