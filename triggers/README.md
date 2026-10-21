@@ -13,7 +13,7 @@ No exploit, no payload: PHP simply reaches its memory ceiling and logs a fatal e
 | B1 — oversized body | POST a multipart body larger than IIS `maxAllowedContentLength` (~30 MB) | IIS 413 before PHP runs |
 | B2 — parse-path OOM | lower `memory_limit` (`scripts/set-ini.ps1 -Pairs 'memory_limit=24M;post_max_size=128M'`), POST a ~27 MB multipart body (under the IIS limit, over `memory_limit`) | PHP fatal `in Unknown on line 0`; `php-cgi.exe` terminates; IIS 500 / non-zero win32 |
 
-Build a multipart body on the Mac:
+Build a multipart body on the host:
 
 ```bash
 python3 - <<'PY'

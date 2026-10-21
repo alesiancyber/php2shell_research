@@ -6,18 +6,18 @@ nav_order: 4
 
 # 4. Collection
 
-Each test run's logs end up in Kusto tables with the real Sentinel schemas, so queries carry over to Microsoft Sentinel unchanged. Fluent Bit collects inside the VM; the Mac pulls each run, archives it in Azurite and loads it.
+Each test run's logs end up in Kusto tables with the real Sentinel schemas, so queries carry over to Microsoft Sentinel unchanged. Fluent Bit collects inside the VM; the host pulls each run, archives it in Azurite and loads it.
 
-## Mac side: Azurite and Kusto
+## Host side: Azurite and Kusto
 
 Run both as containers, however you prefer. The scripts expect:
 
-| Service | Image | Port on the Mac | Needs |
+| Service | Image | Port on the host | Needs |
 | --- | --- | --- | --- |
 | Azurite (blob only) | `mcr.microsoft.com/azure-storage/azurite` | 10000 | HTTPS with `cert.pem` / `key.pem` (`--cert`, `--key`); data volume |
-| Kusto emulator | `mcr.microsoft.com/azuredataexplorer/kustainer-linux` (amd64 only; runs under Rosetta) | 8085 → container 8080 | `ACCEPT_EULA=Y`; `SSL_CERT_FILE` pointing at `ca-bundle.pem` so it trusts Azurite; a `/kustodata` volume for saved databases; about 4 GB of memory |
+| Kusto emulator | `mcr.microsoft.com/azuredataexplorer/kustainer-linux` (amd64 only; on an ARM host it runs under emulation, Rosetta on a Mac) | 8085 → container 8080 | `ACCEPT_EULA=Y`; `SSL_CERT_FILE` pointing at `ca-bundle.pem` so it trusts Azurite; a `/kustodata` volume for saved databases; about 4 GB of memory |
 
-Kusto reaches Azurite at `https://host.docker.internal:10000` (the default in `load-run.py`), which is why the certificate names that host. Keep everything they store under `lab-data/` (git-ignored).
+Kusto reaches Azurite at `https://host.docker.internal:10000` (the default in `load-run.py`), which is why the certificate names that host. Docker Desktop provides that name; on Linux Docker, add `--add-host=host.docker.internal:host-gateway` to the Kusto container. Keep everything they store under `lab-data/` (git-ignored).
 
 <details markdown="block">
 <summary>One-time setup</summary>
@@ -49,7 +49,7 @@ After a Kusto container restart: `scripts/kx.py -d NetDefaultDB '.attach databas
 
 ## VM side: Fluent Bit
 
-[`phase4-fluentbit.ps1`]({{ '/scripts/phase4-fluentbit.ps1' | relative_url }}) installs Fluent Bit (ARM64, hash-checked) as a LocalSystem service. It writes one JSON-lines file per source to `C:\Lab\ship`: `winevt.jsonl` (seven Event Log channels, Security and Sysmon included), `iis.jsonl`, `php.jsonl` and `httperr.jsonl`. Then snapshot: `prlctl snapshot WinLab -n logging-baseline`.
+[`phase4-fluentbit.ps1`]({{ '/scripts/phase4-fluentbit.ps1' | relative_url }}) installs Fluent Bit (hash-checked) as a LocalSystem service. It downloads the ARM64 build (`winarm64`); on x64, change the zip name to the `win64` build and its hash. It writes one JSON-lines file per source to `C:\Lab\ship`: `winevt.jsonl` (seven Event Log channels, Security and Sysmon included), `iis.jsonl`, `php.jsonl` and `httperr.jsonl`. Then take a snapshot named `logging-baseline`.
 
 ## Collecting a run
 
@@ -58,7 +58,7 @@ scripts/collect-run.sh LAB-RUN-<id>
 ```
 
 1. [`collect-vm.ps1`]({{ '/scripts/collect-vm.ps1' | relative_url }}) sends a marker request and waits until Fluent Bit has shipped it, because IIS writes its log lazily. It then moves the JSON-lines files and any new FREB traces into one zip.
-2. The Mac pulls the zip into `lab-data/runs/<id>/` and uploads it to Azurite under `winlab/runs/<id>/`.
+2. The host pulls the zip into `lab-data/runs/<id>/` and uploads it to Azurite under `winlab/runs/<id>/`.
 3. [`load-run.py`]({{ '/scripts/load-run.py' | relative_url }}) stages each file in Kusto and runs [`kql/transform.kql`]({{ '/kql/transform.kql' | relative_url }}). Every row gets `_ResourceId = "winlab/<id>"`. Re-running replaces the run's rows.
 
 ## Where each source lands

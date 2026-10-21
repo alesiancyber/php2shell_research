@@ -18,7 +18,7 @@ Enable-WindowsOptionalFeature -Online -All -NoRestart -FeatureName `
 
 ## 2. PHP
 
-PHP's Windows builds are x64 only; they run under Windows' x64 emulation on ARM. Install the Visual C++ x64 runtime, then the Non-Thread-Safe zip, and check its SHA-256 against `releases.json` on windows.php.net.
+PHP's Windows builds are x64 only. On an ARM64 VM (ours) they run under Windows' built-in x64 emulation. Install the Visual C++ x64 runtime, then the Non-Thread-Safe zip, and check its SHA-256 against `releases.json` on windows.php.net.
 
 ```powershell
 Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile vc_redist.x64.exe

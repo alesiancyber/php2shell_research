@@ -10,16 +10,16 @@ Turn on far more logging than a real server has, so nothing is missed. The [log 
 
 | Script | Does |
 | --- | --- |
-| [`phase3-sysmon.ps1`]({{ '/scripts/phase3-sysmon.ps1' | relative_url }}) | Sysmon (ARM64 build) with the sysmon-modular "excludes only" config, hash-checked |
+| [`phase3-sysmon.ps1`]({{ '/scripts/phase3-sysmon.ps1' | relative_url }}) | Sysmon with the sysmon-modular "excludes only" config, hash-checked. Installs the ARM64 binary (`Sysmon64a.exe`); on x64, use `Sysmon64.exe` |
 | [`phase3-logging.ps1`]({{ '/scripts/phase3-logging.ps1' | relative_url }}) | Audit policy, webroot audit rule, PowerShell logging, IIS log fields, FREB, event channels |
 | [`phase3-verify.ps1`]({{ '/scripts/phase3-verify.ps1' | relative_url }}) | Smoke test: one request, then counts per source |
 
-Then snapshot: `prlctl snapshot WinLab -n logging-on`.
+Then take a snapshot named `logging-on`.
 
 <details markdown="block">
 <summary>Sysmon</summary>
 
-The ARM64 binary `Sysmon64a.exe` ships inside `Sysmon.zip`. The sysmon-modular configs are release assets.
+`Sysmon.zip` contains `Sysmon64.exe` (x64) and `Sysmon64a.exe` (ARM64); the commands below use the ARM64 one. The sysmon-modular configs are release assets.
 
 ```powershell
 Invoke-WebRequest https://download.sysinternals.com/files/Sysmon.zip -OutFile C:\Tools\Sysmon.zip

@@ -87,9 +87,9 @@ Items marked **\*** affect what a detection can see. The rest are lab notes.
 - **\*** Most of the useful sources are off by default; see the matrix above.
 - Sysmon stands in for Defender for Endpoint. MDE adds cloud-side analysis and event types such as AMSI and memory events.
 - `Event.EventData` holds a JSON array in this lab; Azure Monitor Agent writes XML. Queries that parse `EventData` need adjusting for a real workspace.
-- On Windows ARM, x64 PHP loads Prism emulation DLLs (`xtajit*.dll`), visible in Sysmon image-load events (ID 7). Nothing else differs from x64.
+- On Windows ARM (our VM), x64 PHP loads Prism emulation DLLs (`xtajit*.dll`), visible in Sysmon image-load events (ID 7). Nothing else differs from x64.
 - **\*** To reach PHP's multipart parser, the body must be under IIS's `maxAllowedContentLength` (~30 MB by default); a larger body is answered with **413** by IIS request filtering before PHP runs. The two size regimes are different detections (413 vs the parse-path 500).
 - **\*** The three OOM cases are distinguishable from the IIS log alone: GET/500/win32 0 (script OOM), POST/413 (oversized), POST/500/win32 non-zero (aborted worker). PHP error logging and Sysmon add confirmation but are not required.
 - Under FastCGI, PHP's baseline `memory_get_usage(true)` is ~16 MB, so `memory_limit` for case B2 must leave headroom above that or `php-cgi.exe` fails to start (a different error).
 - **\*** With `error_log = syslog`, PHP writes to the Windows Application log under an **unregistered source** (`PHP-8.4.27`), so the event's rendered description is a placeholder ("One or more arguments are invalid"). The real message is in the inserted strings (`EventData` / `StringInserts`) — detections must read those, not the description.
-- Lab noise to filter out: processes started by `prl_tools_service.exe` (the lab's own remote commands) and the user agent `LAB-COLLECT-*` (the collector's marker request).
+- Lab noise to filter out: processes started by the hypervisor's guest tools (`prl_tools_service.exe` in our Parallels VM, the lab's own remote commands) and the user agent `LAB-COLLECT-*` (the collector's marker request).
