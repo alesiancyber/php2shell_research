@@ -38,7 +38,7 @@ The scope is Windows and IIS. New PHP CVEs are added as case studies when adviso
 | This is | This is not |
 | --- | --- |
 | A record of where the **observable precondition** of specific PHP CVEs lands in Windows/IIS logs, both on a default server and with logging turned on | An exploit or proof of concept. The triggers never touch the bug; they only reach the same error class (an OOM, a timeout) |
-| KQL detections, written against Sentinel table schemas, for those preconditions | A vulnerability scanner or patch check. The signals look the same on patched and unpatched PHP, so a hit means the precondition was reached, not that the host is vulnerable or compromised |
+| KQL detections, written against Sentinel table schemas, and the same detections as vendor-neutral Sigma rules | A vulnerability scanner or patch check. The signals look the same on patched and unpatched PHP, so a hit means the precondition was reached, not that the host is vulnerable or compromised |
 | A map of which monitoring tier (IIS log, PHP log, process telemetry, EDR) sees each signal | A detection of successful exploitation. Shell spawns and C2 are the EDR's job; see [Detection coverage](detection-coverage.html) |
 | A lab you can rebuild to check the findings yourself ([Build steps](build/)) | Production-tuned rules. Thresholds and field formats come from one lab VM; tune them for your environment before deploying |
 | | A hardening guide. The lab turns on far more logging than a real server has, on purpose |

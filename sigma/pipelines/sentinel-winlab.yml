@@ -1,0 +1,105 @@
+# Maps the generic Sigma log sources these rules use to Sentinel tables and columns:
+# W3CIISLog, Event (Application channel), SecurityEvent (4689) and this lab's PhpErrorLog_CL.
+#   sigma convert -t kusto -p sigma/pipelines/sentinel-winlab.yml sigma/
+# Needs sigma-cli and pySigma-backend-kusto. Adjust the table names if your workspace differs.
+name: Sentinel tables (php2shell research)
+priority: 20
+transformations:
+  # IIS W3C log
+  - id: webserver_table
+    type: set_state
+    key: query_table
+    val: W3CIISLog
+    rule_conditions:
+      - type: logsource
+        category: webserver
+  - id: webserver_fields
+    type: field_name_mapping
+    mapping:
+      cs-method: csMethod
+      cs-uri-stem: csUriStem
+      sc-status: scStatus
+      sc-win32-status: scWin32Status
+      time-taken: TimeTaken
+      c-ip: cIP
+      s-computername: Computer
+    rule_conditions:
+      - type: logsource
+        category: webserver
+
+  # PHP error log (custom table)
+  - id: php_table
+    type: set_state
+    key: query_table
+    val: PhpErrorLog_CL
+    rule_conditions:
+      - type: logsource
+        category: application
+        product: php
+  - id: php_keywords
+    type: field_name_mapping   # keyword searches (no field) become substring matches on the raw line
+    mapping:
+      ~: RawData
+    rule_conditions:
+      - type: logsource
+        category: application
+        product: php
+
+  # Windows Application log (PHP with error_log = syslog)
+  - id: application_table
+    type: set_state
+    key: query_table
+    val: Event
+    rule_conditions:
+      - type: logsource
+        product: windows
+        service: application
+  - id: application_channel
+    type: add_condition
+    conditions:
+      EventLog: Application
+    rule_conditions:
+      - type: logsource
+        product: windows
+        service: application
+  - id: application_fields
+    type: field_name_mapping
+    mapping:
+      Provider_Name: Source
+      Data: EventData
+    rule_conditions:
+      - type: logsource
+        product: windows
+        service: application
+
+  # Process termination from Security auditing (4689)
+  - id: process_termination_table
+    type: set_state
+    key: query_table
+    val: SecurityEvent
+    rule_conditions:
+      - type: logsource
+        category: process_termination
+        product: windows
+  - id: process_termination_event
+    type: add_condition
+    conditions:
+      EventID: 4689
+    rule_conditions:
+      - type: logsource
+        category: process_termination
+        product: windows
+  - id: process_termination_fields
+    type: field_name_mapping
+    mapping:
+      Image: ProcessName
+    rule_conditions:
+      - type: logsource
+        category: process_termination
+        product: windows
+
+postprocessing:
+  # Prefix each query with its table, as the backend's built-in Sentinel pipelines do
+  - id: prepend_table
+    type: template
+    template: "{{ pipeline.state.query_table }}\n| where {{ query }}"
