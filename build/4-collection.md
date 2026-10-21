@@ -10,7 +10,14 @@ Each test run's logs end up in Kusto tables with the real Sentinel schemas, so q
 
 ## Mac side: Azurite and Kusto
 
-[`docker-compose.yml`](https://github.com/{{ site.github.repository_nwo }}/blob/main/docker-compose.yml) runs both. Everything they store goes under `lab-data/` (git-ignored).
+Run both as containers, however you prefer. The scripts expect:
+
+| Service | Image | Port on the Mac | Needs |
+| --- | --- | --- | --- |
+| Azurite (blob only) | `mcr.microsoft.com/azure-storage/azurite` | 10000 | HTTPS with `cert.pem` / `key.pem` (`--cert`, `--key`); data volume |
+| Kusto emulator | `mcr.microsoft.com/azuredataexplorer/kustainer-linux` (amd64 only; runs under Rosetta) | 8085 → container 8080 | `ACCEPT_EULA=Y`; `SSL_CERT_FILE` pointing at `ca-bundle.pem` so it trusts Azurite; a `/kustodata` volume for saved databases; about 4 GB of memory |
+
+Kusto reaches Azurite at `https://host.docker.internal:10000` (the default in `load-run.py`), which is why the certificate names that host. Keep everything they store under `lab-data/` (git-ignored).
 
 <details markdown="block">
 <summary>One-time setup</summary>
@@ -23,7 +30,8 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 825 -keyout key.pem -out cert.pe
 # Kusto must trust that cert: its own CA list plus cert.pem
 docker run --rm --platform linux/amd64 --entrypoint cat mcr.microsoft.com/azuredataexplorer/kustainer-linux:latest \
   /etc/ssl/certs/ca-certificates.crt > ca-bundle.pem && cat cert.pem >> ca-bundle.pem
-cd ../.. && docker compose up -d
+cd ../..
+# start Azurite and Kusto now (see the table above)
 
 # Blob container and a read-only SAS for Kusto
 export AZURITE_CONN="DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=<Azurite's documented dev key>;BlobEndpoint=https://127.0.0.1:10000/devstoreaccount1;"

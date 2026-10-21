@@ -23,7 +23,6 @@ callouts:
 exclude:
   - lab-data/
   - README.md
-  - docker-compose.yml
   - Gemfile
   - Gemfile.lock
   - vendor/
