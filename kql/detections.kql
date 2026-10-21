@@ -3,6 +3,36 @@
 // not depend on PHP being unpatched. Table schemas match Microsoft Sentinel (SecurityEvent, Event,
 // W3CIISLog) plus this lab's PhpErrorLog_CL. Replace the time window to suit.
 
+// 0. Lab triage: one row per collected run, showing the request, where the PHP error went (or that it
+//    was lost), and whether the FastCGI worker died. This collapses by _ResourceId ("winlab/<run-id>"),
+//    which exists because the lab tags each run; on a live workspace there is no run id, so correlate the
+//    same four signals by Computer + a short time window instead (see queries 1-4 and 2's join pattern).
+let scope = "winlab/LAB-RUN-109618";
+union
+  (W3CIISLog
+    | where _ResourceId startswith scope and csUserAgent startswith "LAB-RUN-109618"
+    | project Run=tostring(split(_ResourceId,"/")[1]),
+              Request=strcat(csMethod," ",csUriStem," -> ",scStatus," (win32=",scWin32Status,")"),
+              PhpError="", Worker=""),
+  (PhpErrorLog_CL
+    | where _ResourceId startswith scope
+    | project Run=tostring(split(_ResourceId,"/")[1]), Request="",
+              PhpError=strcat("file log: ...exhausted... in ",File," line ",tostring(Line)), Worker=""),
+  (Event
+    | where _ResourceId startswith scope and EventLog == "Application" and Source startswith "PHP"
+    | project Run=tostring(split(_ResourceId,"/")[1]), Request="",
+              PhpError=strcat("event log: ",substring(tostring(parse_json(EventData)[1]),0,80),"..."), Worker=""),
+  (SecurityEvent
+    | where _ResourceId startswith scope and EventID == 4689 and ProcessName has "php-cgi"
+    | project Run=tostring(split(_ResourceId,"/")[1]), Request="", PhpError="", Worker="php-cgi EXITED (4689)")
+| summarize Request=max(Request), PhpError=max(PhpError), Worker=max(Worker) by Run
+| extend Case=extract(@"109618(B2|B1|A)",1,Run), Mode=case(Run has "SYSLOG","syslog", Run has "UNSET","unset","file")
+| extend PhpError=iff(PhpError=="","(none logged - lost)",PhpError), Worker=iff(Worker=="","survived",Worker)
+| project Case, Mode, Request, PhpError, Worker
+| order by Case asc, Mode asc
+
+// ---
+
 // 1. SAPI / parse-path OOM: a PHP fatal with no script location ("Unknown on line 0").
 //    This is an OOM during request startup/parsing, not ordinary script code.
 PhpErrorLog_CL
