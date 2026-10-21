@@ -12,6 +12,17 @@ PhpErrorLog_CL
 
 // ---
 
+// 1b. Same parse-path OOM when PHP is set to error_log = syslog (writes to the Windows event log).
+//     PHP's event source is not registered, so the readable text is in EventData, not the rendered
+//     description. Works for the Sentinel "Event" table (Application channel).
+Event
+| where TimeGenerated > ago(1h)
+| where EventLog == "Application" and Source startswith "PHP"
+| where EventData has "Allowed memory size" and EventData has "in Unknown on line 0"
+| project TimeGenerated, Computer, Source, EventData
+
+// ---
+
 // 2. FastCGI worker abort: php-cgi.exe exits, correlated with a 500 POST within a few seconds.
 //    The parse-path OOM kills the worker; an ordinary script OOM does not.
 let exits =

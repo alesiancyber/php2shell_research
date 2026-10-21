@@ -47,6 +47,18 @@ A request can drive PHP to OOM in two very different places, and they leave diff
 {: .note }
 Generated benignly: a deliberately low `memory_limit` plus either an in-script allocation or a large (but normal) multipart POST. No exploit, no payload — just PHP reaching its memory ceiling.
 
+### Where the OOM error goes, by PHP logging mode
+
+The same OOM, run under each `error_log` setting, lands in very different places:
+
+| `error_log` (php.ini) | Case A — script OOM | Case B2 — parse-path OOM |
+| --- | --- | --- |
+| file (e.g. `php_errors.log`) | `PhpErrorLog_CL` | `PhpErrorLog_CL` |
+| `syslog` | `Event` (Application) — real text in `EventData`, **not** the rendered description | `Event` — same |
+| **unset (default)** | **lost** — no PHP error anywhere; only a bare IIS 500 remains | PHP text **lost**, but the worker death still shows: IIS non-zero `win32status`, Security 4689, Sysmon 5 |
+
+**The key conclusion:** on a default PHP install the benign script-level OOM is almost invisible (a lone IIS 500), but the parse-path OOM — the one CVE-2026-109618 is about — stays detectable even with PHP error logging off, because it crashes the FastCGI worker. The dangerous case is the louder one.
+
 Ready-to-run detections for these: [`kql/detections.kql`]({{ site.github.repository_url }}/blob/main/kql/detections.kql).
 
 ## Architecture and design choices
@@ -80,7 +92,7 @@ Most of the useful sources are off on a default Windows and IIS server, so a det
 | IIS request trace (FREB) | `C:\inetpub\logs\FailedReqLogFiles\W3SVC1\fr*.xml` | No | run archive (`freb.zip`) | **yes** (A: 5 traces, B2: 1) |
 | http.sys rejects (HTTPERR) | `C:\Windows\System32\LogFiles\HTTPERR\httperr*.log` | Yes | `HttpErrLog_CL` | no (not generated; the 413 is IIS request filtering, logged in W3CIISLog) |
 | PHP error log file | `error_log` path in php.ini | No (unset) | `PhpErrorLog_CL` | **yes** (A, B2) |
-| PHP errors in Event Log | Application channel, `error_log = syslog` | No | `Event` | not tested |
+| PHP errors in Event Log | Application channel, `error_log = syslog` | No | `Event` | **yes** (syslog A, B2; text in EventData) |
 | Process start with command line | Security 4688 | No | `SecurityEvent` | **yes** (4689 on the B2 worker exit) |
 | Webroot file writes | Security 4663 (needs an audit rule) | No | `SecurityEvent` | not tested |
 | Sysmon process, network, file, DNS | `Microsoft-Windows-Sysmon/Operational` | No (not installed) | `Event` | **yes** (B2 worker start/terminate) |
@@ -103,6 +115,7 @@ Items marked **\*** affect what a detection can see. The rest are lab notes.
 - **\*** To reach PHP's multipart parser, the body must be under IIS's `maxAllowedContentLength` (~30 MB by default); a larger body is answered with **413** by IIS request filtering before PHP runs. The two size regimes are different detections (413 vs the parse-path 500).
 - **\*** The three OOM cases are distinguishable from the IIS log alone: GET/500/win32 0 (script OOM), POST/413 (oversized), POST/500/win32 non-zero (aborted worker). PHP error logging and Sysmon add confirmation but are not required.
 - Under FastCGI, PHP's baseline `memory_get_usage(true)` is ~16 MB, so `memory_limit` for case B2 must leave headroom above that or `php-cgi.exe` fails to start (a different error).
+- **\*** With `error_log = syslog`, PHP writes to the Windows Application log under an **unregistered source** (`PHP-8.4.27`), so the event's rendered description is a placeholder ("One or more arguments are invalid"). The real message is in the inserted strings (`EventData` / `StringInserts`) — detections must read those, not the description.
 - Lab noise to filter out: processes started by `prl_tools_service.exe` (the lab's own remote commands) and the user agent `LAB-COLLECT-*` (the collector's marker request).
 
 ## Next: Linux and macOS
