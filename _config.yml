@@ -1,4 +1,6 @@
 title: php2shell research
+url: https://alesiancyber.github.io
+baseurl: /php2shell_research
 description: What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and how to detect it.
 remote_theme: just-the-docs/just-the-docs@v0.10.1
 plugins:
