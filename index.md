@@ -30,6 +30,16 @@ EDR records what processes do: process trees, file writes, network connections. 
 
 Windows is done first. Linux and macOS follow the same method.
 
+## What this is and what it is not
+
+| This is | This is not |
+| --- | --- |
+| A record of where the **observable precondition** of specific PHP CVEs lands in Windows/IIS logs, both on a default server and with logging turned on | An exploit or proof of concept. The triggers never touch the bug; they only reach the same error class (an OOM, a timeout) |
+| KQL detections, written against Sentinel table schemas, for those preconditions | A vulnerability scanner or patch check. The signals look the same on patched and unpatched PHP, so a hit means the precondition was reached, not that the host is vulnerable or compromised |
+| A map of which monitoring tier (IIS log, PHP log, process telemetry, EDR) sees each signal | A detection of successful exploitation. Shell spawns and C2 are the EDR's job; see [Detection coverage](detection-coverage.html) |
+| A lab you can rebuild to check the findings yourself ([Build steps](build/)) | Production-tuned rules. Thresholds and field formats come from one lab VM; tune them for your environment before deploying |
+| | A hardening guide. The lab turns on far more logging than a real server has, on purpose |
+
 ## Case studies
 
 Each PHP CVE gets its own page: the observable precondition, generated benignly (no exploit), what it leaves in the Windows/IIS logs, and ready-to-run detections. See **[Case studies](case-studies/)**.
@@ -43,26 +53,7 @@ A recurring theme across both: whether a fatal **restarts** the FastCGI worker (
 
 For what it takes to actually detect these — and why a stock EDR catches the exploitation but not the precondition — see **[Detection coverage](detection-coverage.html)**.
 
-## Architecture and design choices
-
-Provided for replication; the findings above do not depend on it. Full steps are in [Build steps](build/).
-
-![Lab architecture: the Windows VM's logs are collected by Fluent Bit, pulled to the Mac per test run, archived in Azurite and loaded into Kusto tables with Sentinel schemas](assets/architecture.svg)
-
-<details markdown="block">
-<summary>Design choices and why</summary>
-
-| Choice | Why |
-| --- | --- |
-| VMs for Windows and macOS, not containers | Containers share the host kernel. On a Mac, Docker runs only Linux, inside a VM the host's EDR cannot see into. |
-| Parallels Desktop | Snapshots and the `prlctl` command line make the revert, trigger, collect loop scriptable. |
-| Windows 11 ARM on Apple Silicon | Same event channels, event IDs and IIS logs as x64. Emulating x86 is too slow. x64 PHP runs under Windows' built-in emulation. |
-| Sysmon with a verbose config as the EDR stand-in | Records the same core events as Defender for Endpoint (process, network, file, registry, DNS) and keeps them locally. |
-| Everything logged, then judged by default state | Every source is turned on so nothing is missed; the log source matrix then records which ones a default server has. |
-| Fluent Bit in the VM, pulled per run | Each test run is collected as one unit. The VM holds no storage credentials. |
-| Kusto emulator with real Sentinel table schemas | Queries written here run unchanged against `SecurityEvent`, `Event` and `W3CIISLog` in Microsoft Sentinel. |
-
-</details>
+To check these findings yourself, the lab architecture and full rebuild steps are in [Build steps](build/).
 
 ## Log source matrix (Windows)
 

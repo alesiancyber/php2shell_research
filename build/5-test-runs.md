@@ -14,7 +14,7 @@ curl -A "LAB-RUN-<id>" "http://<vm-ip>/<path>"                   # the trigger, 
 scripts/collect-run.sh LAB-RUN-<id>
 ```
 
-Repeat per PHP logging mode (Runs A, B and C, see [IIS and PHP](2-iis-php.html)).
+Repeat per PHP logging mode (file, syslog and unset; see [IIS and PHP](2-iis-php.html)).
 
 ## Looking at a run
 

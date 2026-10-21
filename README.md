@@ -6,7 +6,12 @@ What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and whi
 
 | Path | What |
 | --- | --- |
-| `index.md`, `build/` | The site: overview, findings, and build steps |
+| `index.md` | Overview, scope, and the Windows log source matrix |
+| `case-studies/` | One page per CVE: findings and detections |
+| `detection-coverage.md` | Which monitoring tier sees each signal, and what a stock EDR catches |
+| `kql/detections-*.kql` | Detection queries per CVE |
+| `triggers/` | Benign request generators for each precondition |
+| `build/` | Steps to rebuild the lab and check the findings |
 | `scripts/` | Every script the lab uses. `.ps1` files run inside the Windows VM through `vm-run.sh` |
 | `kql/tables.kql` | Kusto tables the lab writes to (Sentinel schemas plus two custom tables) |
 | `kql/transform.kql` | Maps raw Fluent Bit records into those tables |

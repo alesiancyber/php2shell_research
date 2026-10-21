@@ -1,4 +1,8 @@
-# Triggers — CVE-2026-109618 (PHP OOM during request parsing)
+# Triggers
+
+Benign generators for each CVE's observable precondition. None of them touch the bug.
+
+## CVE-2026-109618 (PHP OOM during request parsing)
 
 Benign generators of the vulnerability's **precondition** (a request driving PHP to its memory limit).
 No exploit, no payload: PHP simply reaches its memory ceiling and logs a fatal error. Three cases:
@@ -23,3 +27,20 @@ curl -A "LAB-RUN-<id>" -X POST --data-binary @body.bin \
 ```
 
 Detections that fire on these: [`kql/detections-109618.kql`](../kql/detections-109618.kql).
+
+## CVE-2026-109619 (dangling request state)
+
+Benign generators of a fatal that leaves the FastCGI worker reusable.
+
+| File | How | Result |
+| --- | --- | --- |
+| `timeout.php` | GET; sets a 2 s time limit, then busy-loops past it | PHP fatal `Maximum execution time of 2 seconds exceeded`; IIS 500 with `time-taken` ≈ 2000 ms; `php-cgi.exe` survives |
+| `pid.php` | GET before and after `timeout.php` | Prints `LAB-PID=<pid>`; the same pid both times shows the worker was reused |
+
+```bash
+curl -A "LAB-RUN-<id>" "http://<vm-ip>/pid.php"
+curl -A "LAB-RUN-<id>" "http://<vm-ip>/timeout.php"
+curl -A "LAB-RUN-<id>" "http://<vm-ip>/pid.php"
+```
+
+Detections that fire on these: [`kql/detections-109619.kql`](../kql/detections-109619.kql).

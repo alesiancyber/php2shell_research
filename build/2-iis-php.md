@@ -33,11 +33,11 @@ Expand-Archive php.zip C:\PHP
 
 Each test runs once per PHP logging mode, because `error_log` holds one destination:
 
-| Run | `error_log` | Shows |
+| Mode | `error_log` | Shows |
 | --- | --- | --- |
-| A | `C:\PHP\logs\php_errors.log` | The most common setup; needs a file shipper |
-| B | `syslog` | Errors in the Windows Application event log |
-| C | unset (default) | What a default IIS install keeps |
+| file | `C:\PHP\logs\php_errors.log` | The most common setup; needs a file shipper |
+| syslog | `syslog` | Errors in the Windows Application event log |
+| unset | unset (default) | What a default IIS install keeps |
 
 ```ini
 log_errors = On
