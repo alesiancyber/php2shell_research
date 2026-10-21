@@ -1,0 +1,11 @@
+# Local lab state: runs, Azurite data, Kusto databases, certs, SAS tokens
+lab-data
+.env
+*.zip
+__pycache__/
+.DS_Store
+_site/
+.jekyll-cache/
+Gemfile.lock
+vendor/
+.bundle/

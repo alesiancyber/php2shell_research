@@ -1,0 +1,46 @@
+// Detections for the precondition of CVE-2026-109618 (PHP OOM during request parsing) on Windows/IIS.
+// These fire on a request driving PHP to OOM, which is the observable an attacker would need; they do
+// not depend on PHP being unpatched. Table schemas match Microsoft Sentinel (SecurityEvent, Event,
+// W3CIISLog) plus this lab's PhpErrorLog_CL. Replace the time window to suit.
+
+// 1. SAPI / parse-path OOM: a PHP fatal with no script location ("Unknown on line 0").
+//    This is an OOM during request startup/parsing, not ordinary script code.
+PhpErrorLog_CL
+| where TimeGenerated > ago(1h)
+| where Message has "Allowed memory size" and File == "Unknown" and Line == 0
+| project TimeGenerated, Computer, Message, SourceFile
+
+// ---
+
+// 2. FastCGI worker abort: php-cgi.exe exits, correlated with a 500 POST within a few seconds.
+//    The parse-path OOM kills the worker; an ordinary script OOM does not.
+let exits =
+    SecurityEvent
+    | where TimeGenerated > ago(1h) and EventID == 4689
+    | where ProcessName has "php-cgi.exe"
+    | project ExitTime = TimeGenerated, Computer, ProcessName;
+W3CIISLog
+| where TimeGenerated > ago(1h)
+| where csMethod == "POST" and scStatus == "500"
+| join kind=inner exits on Computer
+| where abs(datetime_diff('second', TimeGenerated, ExitTime)) <= 5
+| project TimeGenerated, Computer, csUriStem, cIP, scWin32Status, ExitTime
+
+// ---
+
+// 3. Aborted-worker 500 from the IIS log alone (no PHP log or Sysmon needed): a 500 POST whose
+//    sc-win32-status is non-zero means the FastCGI worker died, unlike an ordinary PHP 500 (win32 = 0).
+W3CIISLog
+| where TimeGenerated > ago(1h)
+| where csMethod == "POST" and scStatus == "500" and scWin32Status !in ("0", "")
+| project TimeGenerated, Computer, csUriStem, cIP, scWin32Status, csUserAgent
+
+// ---
+
+// 4. Oversized multipart bodies blocked by IIS request filtering (413), upstream of PHP.
+//    A burst on a POST endpoint suggests someone probing body-size limits.
+W3CIISLog
+| where TimeGenerated > ago(1h)
+| where scStatus == "413"
+| summarize count(), make_set(csUriStem, 10) by cIP, bin(TimeGenerated, 5m)
+| where count_ > 3

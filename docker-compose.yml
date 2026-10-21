@@ -1,0 +1,29 @@
+# Local storage and query side of the lab: Azurite (blob archive of each run) and the Kusto emulator.
+# Everything lives under ./lab-data (git-ignored). Setup steps: build/4-collection.md.
+#   lab-data/certs/cert.pem, key.pem   self-signed cert for Azurite (SAN: host.docker.internal, localhost, 127.0.0.1)
+#   lab-data/certs/ca-bundle.pem       Kusto image CAs + cert.pem, so Kusto trusts Azurite over HTTPS
+# Kusto refuses plain-HTTP storage URLs, hence HTTPS on Azurite.
+services:
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: azurite-blob --silent --location /data --skipApiVersionCheck --blobHost 0.0.0.0 --cert /certs/cert.pem --key /certs/key.pem
+    ports:
+      - "127.0.0.1:10000:10000"   # only the Mac and the Kusto container need it; the VM never talks to Azurite
+    volumes:
+      - ./lab-data/azurite:/data
+      - ./lab-data/certs:/certs:ro
+    restart: unless-stopped
+
+  kusto:
+    image: mcr.microsoft.com/azuredataexplorer/kustainer-linux:latest
+    platform: linux/amd64   # amd64 only; runs under Rosetta on Apple Silicon
+    environment:
+      ACCEPT_EULA: "Y"
+      SSL_CERT_FILE: /certs/ca-bundle.pem
+    ports:
+      - "127.0.0.1:8085:8080"
+    volumes:
+      - ./lab-data/kustodata:/kustodata
+      - ./lab-data/certs:/certs:ro
+    mem_limit: 4g
+    restart: unless-stopped

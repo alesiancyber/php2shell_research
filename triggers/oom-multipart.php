@@ -1,0 +1,1 @@
+<?php echo "LAB-OOM-MP ok fields=".count($_POST);

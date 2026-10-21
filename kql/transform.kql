@@ -1,0 +1,139 @@
+// WinLab: map one test run's raw Fluent Bit records (staging tables) into Sentinel-shaped tables.
+// Run by load-run.py: commands are separated by lines of "// ---"; {RUN} and {COMPUTER} are filled in.
+// Every row gets _ResourceId = "winlab/{RUN}" so a run can be isolated with `where _ResourceId == ...`.
+//
+// .set-or-append needs the target's full column list in order, so each insert is
+// `union (Target | take 0), (mapped rows)`: unmapped columns come through empty.
+//
+// Known differences from a real Sentinel/AMA workspace:
+//  - Event.EventData is the JSON array of event inserts (AMA writes <DataItem> XML).
+//  - SecurityEvent fills the common columns plus the 4688 / 4689 / 4663 inserts; other IDs keep EventData only.
+//  - W3CIISLog drops the custom ContentType / XFF fields (no such columns); they stay in the run's iis.jsonl.
+//  - IIS field order assumes this lab's #Fields line (all standard fields + ContentType + XFF).
+
+// --- helpers
+.create-or-alter function with (folder="winlab") lab_ts(t:dynamic) {
+    // Fluent Bit winevtlog TimeCreated "2026-10-21 11:31:53 -0400" -> UTC datetime.
+    // JSON ingestion already turns that string into a UTC datetime; the string parse is the fallback.
+    iff(gettype(t) == "datetime", todatetime(t),
+        todatetime(strcat(replace_string(substring(tostring(t), 0, 19), " ", "T"), substring(tostring(t), 20, 3), ":", substring(tostring(t), 23, 2))))
+}
+// ---
+.create-or-alter function with (folder="winlab") lab_dash(v:dynamic) {
+    // W3C logs write "-" for empty
+    iff(tostring(v) == "-", "", tostring(v))
+}
+// ---
+.create-merge table _Stage_WinEvt (Record:dynamic)
+// ---
+.create-merge table _Stage_Iis (Record:dynamic)
+// ---
+.create-merge table _Stage_Php (Record:dynamic)
+// ---
+.create-merge table _Stage_HttpErr (Record:dynamic)
+// ---
+.create-merge table PhpErrorLog_CL (TimeGenerated:datetime, Computer:string, Level:string, Message:string, File:string, Line:int, RawData:string, SourceFile:string, Type:string, _ResourceId:string)
+// ---
+.create-merge table HttpErrLog_CL (TimeGenerated:datetime, Computer:string, cIP:string, cPort:int, sIP:string, sPort:int, csVersion:string, csMethod:string, csUri:string, scStatus:string, sSiteId:string, sReason:string, sQueueName:string, RawData:string, SourceFile:string, Type:string, _ResourceId:string)
+// ---
+.set-or-append SecurityEvent <|
+union (SecurityEvent | take 0), (
+_Stage_WinEvt
+| where tostring(Record.Channel) == "Security"
+| extend r = Record, s = Record.StringInserts, id = toint(Record.EventID)
+| extend subj = id in (4688, 4689, 4663)
+| project
+    TimeGenerated = lab_ts(r.TimeCreated), Computer = tostring(r.Computer), EventID = id,
+    Activity = strcat(id, " - ", tostring(split(tostring(r.Message), "\r\n")[0])),
+    Channel = "Security", EventSourceName = tostring(r.ProviderName), EventRecordId = tostring(r.EventRecordID),
+    Task = toint(r.Task), Level = tostring(r.Level), Keywords = tostring(r.Keywords), Opcode = tostring(r.Opcode),
+    Version = toint(r.Version), SystemProcessId = toint(r.ProcessID), SystemThreadId = toint(r.ThreadID),
+    EventData = tostring(s),
+    SubjectUserSid = iff(subj, tostring(s[0]), ""), SubjectUserName = iff(subj, tostring(s[1]), ""),
+    SubjectDomainName = iff(subj, tostring(s[2]), ""), SubjectLogonId = iff(subj, tostring(s[3]), ""),
+    SubjectAccount = iff(subj, strcat(tostring(s[2]), "\\", tostring(s[1])), ""),
+    Account = iff(subj, strcat(tostring(s[2]), "\\", tostring(s[1])), ""),
+    NewProcessId = iff(id == 4688, tostring(s[4]), ""), NewProcessName = iff(id == 4688, tostring(s[5]), ""),
+    TokenElevationType = iff(id == 4688, tostring(s[6]), ""),
+    ProcessId = case(id == 4688, tostring(s[7]), id == 4689, tostring(s[5]), id == 4663, tostring(s[10]), ""),
+    CommandLine = iff(id == 4688, tostring(s[8]), ""),
+    TargetUserSid = iff(id == 4688, tostring(s[9]), ""), TargetUserName = iff(id == 4688, tostring(s[10]), ""),
+    TargetDomainName = iff(id == 4688, tostring(s[11]), ""), TargetLogonId = iff(id == 4688, tostring(s[12]), ""),
+    ParentProcessName = iff(id == 4688, tostring(s[13]), ""), MandatoryLabel = iff(id == 4688, tostring(s[14]), ""),
+    Status = iff(id == 4689, tostring(s[4]), ""),
+    ObjectServer = iff(id == 4663, tostring(s[4]), ""), ObjectType = iff(id == 4663, tostring(s[5]), ""),
+    ObjectName = iff(id == 4663, tostring(s[6]), ""), HandleId = iff(id == 4663, tostring(s[7]), ""),
+    AccessMask = iff(id == 4663, tostring(s[9]), ""),
+    ProcessName = case(id == 4689, tostring(s[6]), id == 4663, tostring(s[11]), ""),
+    SourceSystem = "OpsManager", Type = "SecurityEvent", _ResourceId = "winlab/{RUN}"
+)
+// ---
+.set-or-append Event <|
+union (Event | take 0), (
+_Stage_WinEvt
+| where tostring(Record.Channel) != "Security"
+| extend r = Record, lvl = toint(Record.Level)
+| project
+    TimeGenerated = lab_ts(r.TimeCreated), Computer = tostring(r.Computer), EventID = toint(r.EventID),
+    EventLevel = lvl, EventLevelName = case(lvl == 1, "Critical", lvl == 2, "Error", lvl == 3, "Warning", lvl == 5, "Verbose", "Information"),
+    EventLog = tostring(r.Channel), Source = tostring(r.ProviderName), EventCategory = toint(r.Task),
+    RenderedDescription = tostring(r.Message), EventData = tostring(r.StringInserts), UserName = tostring(r.UserID),
+    SourceSystem = "OpsManager", Type = "Event", _ResourceId = "winlab/{RUN}"
+)
+// ---
+.set-or-append W3CIISLog <|
+union (W3CIISLog | take 0), (
+_Stage_Iis
+| extend l = tostring(Record.log)
+| where isnotempty(l) and l !startswith "#"
+| extend f = split(l, " ")
+| project
+    TimeGenerated = todatetime(strcat(f[0], "T", f[1], "Z")), sSiteName = tostring(f[2]), Computer = tostring(f[3]),
+    sIP = tostring(f[4]), csMethod = tostring(f[5]), csUriStem = tostring(f[6]), csUriQuery = lab_dash(f[7]),
+    sPort = toint(f[8]), csUserName = lab_dash(f[9]), cIP = tostring(f[10]), csVersion = tostring(f[11]),
+    csUserAgent = lab_dash(f[12]), csCookie = lab_dash(f[13]), csReferer = lab_dash(f[14]), csHost = lab_dash(f[15]),
+    scStatus = tostring(f[16]), scSubStatus = tostring(f[17]), scWin32Status = tostring(f[18]),
+    scBytes = tolong(f[19]), csBytes = tolong(f[20]), TimeTaken = tolong(f[21]),
+    SourceSystem = "OpsManager", Type = "W3CIISLog", _ResourceId = "winlab/{RUN}"
+)
+// ---
+.set-or-append PhpErrorLog_CL <|
+union (PhpErrorLog_CL | take 0), (
+_Stage_Php
+| extend l = tostring(Record.log)
+| where isnotempty(l)
+| extend ts = extract(@"^\[(\d{2})-(\w{3})-(\d{4}) (\d{2}:\d{2}:\d{2})", 0, l)
+| extend d = extract(@"^\[(\d{2})", 1, l), mon = extract(@"^\[\d{2}-(\w{3})", 1, l),
+         y = extract(@"^\[\d{2}-\w{3}-(\d{4})", 1, l), hms = extract(@"^\[[^ ]+ (\d{2}:\d{2}:\d{2})", 1, l)
+| extend m = indexof("JanFebMarAprMayJunJulAugSepOctNovDec", mon) / 3 + 1
+| project
+    TimeGenerated = todatetime(strcat(y, "-", iff(m < 10, "0", ""), m, "-", d, "T", hms, "Z")),
+    Computer = "{COMPUTER}",
+    Level = extract(@"\] PHP ([^:]+):", 1, l),
+    Message = extract(@"\] PHP [^:]+:\s+(.*) in .+ on line \d+$", 1, l),
+    File = extract(@" in (.+) on line \d+$", 1, l),
+    Line = toint(extract(@" on line (\d+)$", 1, l)),
+    RawData = l, SourceFile = tostring(Record.SourceFile), Type = "PhpErrorLog_CL", _ResourceId = "winlab/{RUN}"
+)
+// ---
+.set-or-append HttpErrLog_CL <|
+union (HttpErrLog_CL | take 0), (
+_Stage_HttpErr
+| extend l = tostring(Record.log)
+| where isnotempty(l) and l !startswith "#"
+| extend f = split(l, " ")
+| project
+    TimeGenerated = todatetime(strcat(f[0], "T", f[1], "Z")), Computer = "{COMPUTER}",
+    cIP = tostring(f[2]), cPort = toint(f[3]), sIP = tostring(f[4]), sPort = toint(f[5]),
+    csVersion = lab_dash(f[6]), csMethod = lab_dash(f[7]), csUri = lab_dash(f[8]),
+    scStatus = lab_dash(f[10]), sSiteId = lab_dash(f[11]), sReason = lab_dash(f[12]), sQueueName = lab_dash(f[13]),
+    RawData = l, SourceFile = tostring(Record.SourceFile), Type = "HttpErrLog_CL", _ResourceId = "winlab/{RUN}"
+)
+// ---
+.clear table _Stage_WinEvt data
+// ---
+.clear table _Stage_Iis data
+// ---
+.clear table _Stage_Php data
+// ---
+.clear table _Stage_HttpErr data

@@ -1,0 +1,28 @@
+title: php2shell research
+description: What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and how to detect it.
+remote_theme: just-the-docs/just-the-docs@v0.10.1
+plugins:
+  - jekyll-remote-theme
+
+search_enabled: true
+heading_anchors: true
+back_to_top: true
+back_to_top_text: "Back to top"
+color_scheme: light
+
+callouts:
+  note:
+    title: Note
+    color: blue
+  warning:
+    title: Warning
+    color: yellow
+
+exclude:
+  - lab-data/
+  - README.md
+  - docker-compose.yml
+  - Gemfile
+  - Gemfile.lock
+  - vendor/
+  - "*.zip"
