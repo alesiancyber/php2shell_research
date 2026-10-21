@@ -1,6 +1,6 @@
 # php2shell research
 
-What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and which of those signals a detection pipeline actually receives. Logging and detection research only: tests use harmless requests that reach the same code path, never a working exploit.
+What a PHP vulnerability leaves in the logs on Windows and IIS, and which of those signals a detection pipeline actually receives. Logging and detection research only: tests use harmless requests that reach the same code path, never a working exploit.
 
 > **Initial research.** Done within about two hours of the advisories being published, on one lab VM. The log results are measured. Statements about EDR behaviour are expectations: Sysmon stood in for the sensor, and without real EDR sensors we cannot confirm them.
 
@@ -23,6 +23,8 @@ What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and whi
 | [CVE-2026-109618](case-studies/cve-2026-109618.md) | Use-after-free via OOM handling | An OOM during multipart parsing logs `in Unknown on line 0` and crashes the FastCGI worker; a script OOM does not | [`detections-109618.kql`](kql/detections-109618.kql) |
 | [CVE-2026-109619](case-studies/cve-2026-109619.md) | Use-after-free via dangling request state | A timeout or script OOM fatal leaves the worker running, so the next request reuses it | [`detections-109619.kql`](kql/detections-109619.kql) |
 
+The raw log rows behind each finding are in [`evidence/`](evidence/) as CSV, which GitHub shows as tables.
+
 - **We do not expect a stock EDR to catch either precondition** (untested against a commercial EDR). An OOM, a timeout, or a worker that dies or gets reused looks like normal web-server behaviour. An EDR's more likely role is the exploitation outcome (`php-cgi.exe` spawning a shell, outbound C2). See [Detection coverage](detection-coverage.md).
 - **The useful signals are SIEM detections over app logs:** the IIS log and the PHP error log, sometimes correlated with process telemetry.
 - **Shipping the IIS log alone covers a lot.** Its default fields separate the cases: a 500 with a non-zero `win32status` (aborted worker), a 413 (oversized body), and a 500 whose `time-taken` ≈ `max_execution_time` (timeout).
@@ -30,7 +32,7 @@ What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and whi
 - **With `error_log = syslog`**, PHP writes to the Application log under an unregistered source. The real message is in `EventData`, not the rendered description.
 - **Worker restart vs reuse decides the risk.** The parse-path OOM is loud (the worker crashes, which clears its state). The timeout and the script OOM are quiet (the worker is reused and carries its state forward). That quiet case is the one CVE-2026-109619 needs.
 
-Linux and macOS are next, using the same method.
+The scope is Windows and IIS. New PHP CVEs are added as case studies when advisories come out.
 
 ## Repo layout
 
@@ -40,6 +42,7 @@ Linux and macOS are next, using the same method.
 | `case-studies/` | One page per CVE: findings and detections |
 | `detection-coverage.md` | Which monitoring tier sees each signal, and what we expect a stock EDR to catch |
 | `kql/detections-*.kql` | Detection queries per CVE |
+| `evidence/` | Raw log rows behind each case study, as CSV (from `kql/evidence.kql` via `scripts/export-evidence.py`) |
 | `triggers/` | Benign request generators for each precondition |
 | `build/` | Steps to rebuild the lab and check the findings |
 | `scripts/` | Every script the lab uses. `.ps1` files run inside the Windows VM through `vm-run.sh` |

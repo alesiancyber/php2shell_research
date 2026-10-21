@@ -15,7 +15,7 @@ How to rebuild the Windows lab and check the findings yourself. The findings do 
 
 | Choice | Why |
 | --- | --- |
-| VMs for Windows and macOS, not containers | Containers share the host kernel. On a Mac, Docker runs only Linux, inside a VM the host's EDR cannot see into. |
+| A Windows VM, not a container | Containers share the host kernel, and on a Mac Docker runs only Linux. |
 | Parallels Desktop | Snapshots and the `prlctl` command line make the revert, trigger, collect loop scriptable. |
 | Windows 11 ARM on Apple Silicon | Same event channels, event IDs and IIS logs as x64. Emulating x86 is too slow. x64 PHP runs under Windows' built-in emulation. |
 | Sysmon with a verbose config as the EDR stand-in | Records the same core events as Defender for Endpoint (process, network, file, registry, DNS) and keeps them locally. |

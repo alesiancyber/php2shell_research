@@ -6,7 +6,7 @@ nav_order: 1
 # php2shell research
 {: .no_toc }
 
-What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and which of those signals a detection pipeline actually receives.
+What a PHP vulnerability leaves in the logs on Windows and IIS, and which of those signals a detection pipeline actually receives.
 {: .fs-6 .fw-300 }
 
 {: .warning }
@@ -21,7 +21,7 @@ What a PHP vulnerability leaves in the logs on Windows, Linux and macOS, and whi
 
 ## Purpose and goals
 
-This project records, per operating system, where each signal from a PHP vulnerability lands and whether a SIEM sees it. It is about logging and detection only: each test sends a harmless request that reaches the same code path or error class as the vulnerability. No working exploit is used or published.
+This project records where each signal from a PHP vulnerability lands and whether a SIEM sees it. It is about logging and detection only: each test sends a harmless request that reaches the same code path or error class as the vulnerability. No working exploit is used or published.
 
 For every signal it answers three questions:
 
@@ -31,7 +31,7 @@ For every signal it answers three questions:
 
 EDR records what processes do: process trees, file writes, network connections. It does not typically read PHP error logs. A PHP error reaches a SIEM only if a log shipper collects the file, or if PHP is told to write to the operating system's own log. That gap is what this project measures.
 
-Windows is done first. Linux and macOS follow the same method.
+The scope is Windows and IIS. New PHP CVEs are added as case studies when advisories come out.
 
 ## What this is and what it is not
 
@@ -49,8 +49,8 @@ Each PHP CVE gets its own page: the observable precondition, generated benignly 
 
 | CVE | Class | What we generate | Headline signal |
 | --- | --- | --- | --- |
-| [CVE-2026-109618](case-studies/cve-2026-109618.html) | UAF via OOM handling | A request driving PHP to its memory limit | Parse-path OOM (`Unknown on line 0`) crashes the FastCGI worker; a script OOM does not |
-| [CVE-2026-109619](case-studies/cve-2026-109619.html) | UAF via dangling request state | A fatal (timeout or OOM) leaving a worker reusable | A fatal with **no** worker restart = state carried into the next request |
+| [CVE-2026-109618](case-studies/cve-2026-109618.html) | Use-after-free via OOM handling | A request driving PHP to its memory limit | Parse-path OOM (`Unknown on line 0`) crashes the FastCGI worker; a script OOM does not |
+| [CVE-2026-109619](case-studies/cve-2026-109619.html) | Use-after-free via dangling request state | A fatal (timeout or OOM) leaving a worker reusable | A fatal with **no** worker restart = state carried into the next request |
 
 A recurring theme across both: whether a fatal **restarts** the FastCGI worker (state cleared, loud crash) or the worker is **reused** (state persists, quiet) decides both the risk and which signal fires.
 
@@ -81,7 +81,7 @@ Most of the useful sources are off on a default Windows and IIS server, so a det
 Items marked **\*** affect what a detection can see. The rest are lab notes.
 
 - **\*** A request that makes PHP log a warning still returns **HTTP 200**. The IIS log shows nothing unusual; the error exists only in the PHP log.
-- **\*** With `error_log` unset (PHP's default), the PHP error is lost entirely — confirmed: no OOM/timeout text in any table, only a bare IIS 500 remains (see the case studies).
+- **\*** With `error_log` unset (PHP's default), the PHP error is lost entirely — confirmed for the OOM cases: no OOM text in any table, only a bare IIS 500 remains (see the case studies).
 - **\*** `php-cgi.exe` stays running between requests under FastCGI. Process creation for it appears when the app pool starts, not per request, and any child process shows `php-cgi.exe` as its parent.
 - **\*** IIS writes its log lazily: in testing, a line landed about 24 seconds after a flush request. Near-real-time detections on `W3CIISLog` see that delay.
 - **\*** Most of the useful sources are off by default; see the matrix above.
@@ -93,31 +93,3 @@ Items marked **\*** affect what a detection can see. The rest are lab notes.
 - Under FastCGI, PHP's baseline `memory_get_usage(true)` is ~16 MB, so `memory_limit` for case B2 must leave headroom above that or `php-cgi.exe` fails to start (a different error).
 - **\*** With `error_log = syslog`, PHP writes to the Windows Application log under an **unregistered source** (`PHP-8.4.27`), so the event's rendered description is a placeholder ("One or more arguments are invalid"). The real message is in the inserted strings (`EventData` / `StringInserts`) — detections must read those, not the description.
 - Lab noise to filter out: processes started by `prl_tools_service.exe` (the lab's own remote commands) and the user agent `LAB-COLLECT-*` (the collector's marker request).
-
-## Next: Linux and macOS
-
-Both reuse this method: the same run modes, run-ID tagging, collection and one matrix per OS.
-
-<details markdown="block">
-<summary>Where the signals are expected</summary>
-
-**Linux:** Docker Compose with Apache + mod_php and nginx + php-fpm, plus a Linux VM with auditd and Sysmon for Linux for process telemetry.
-
-| Signal | Where |
-| --- | --- |
-| Apache logs | `/var/log/apache2/` (Debian) or `/var/log/httpd/` (RHEL) |
-| nginx logs | `/var/log/nginx/`; PHP errors appear as `FastCGI sent in stderr` |
-| php-fpm | Pool log when `catch_workers_output = yes` |
-| `error_log = syslog` | journald or rsyslog |
-| Processes | auditd `execve`, Sysmon for Linux |
-
-**macOS:** a macOS VM with Homebrew `php` plus `httpd` or `nginx`.
-
-| Signal | Where |
-| --- | --- |
-| Apache and nginx logs | `/opt/homebrew/var/log/httpd/`, `/opt/homebrew/var/log/nginx/` |
-| php-fpm | `/opt/homebrew/var/log/php-fpm.log` |
-| `error_log = syslog` | Unified log: `log show --predicate 'process CONTAINS "php"'` |
-| Processes | EDR built on Apple's Endpoint Security framework |
-
-</details>
