@@ -10,6 +10,14 @@ search_enabled: true
 heading_anchors: true
 back_to_top: true
 back_to_top_text: "Back to top"
+
+# Link back to the repository from every page (top-right of the header).
+aux_links:
+  "View on GitHub":
+    - "https://github.com/alesiancyber/php2shell_research"
+aux_links_new_tab: true
+
+footer_content: 'Source, evidence CSVs, KQL and Sigma rules live in the <a href="https://github.com/alesiancyber/php2shell_research">php2shell_research repository on GitHub</a>.'
 color_scheme: dark
 
 callouts:
