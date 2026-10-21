@@ -41,6 +41,8 @@ Each PHP CVE gets its own page: the observable precondition, generated benignly 
 
 A recurring theme across both: whether a fatal **restarts** the FastCGI worker (state cleared, loud crash) or the worker is **reused** (state persists, quiet) decides both the risk and which signal fires.
 
+For what it takes to actually detect these — and why a stock EDR catches the exploitation but not the precondition — see **[Detection coverage](detection-coverage.html)**.
+
 ## Architecture and design choices
 
 Provided for replication; the findings above do not depend on it. Full steps are in [Build steps](build/).
